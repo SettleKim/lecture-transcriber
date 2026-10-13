@@ -113,14 +113,26 @@ def fmt_txt(t: float) -> str:
     return f"{m:02}:{s:02}" if m < 60 else f"{m // 60}:{m % 60:02}:{s:02}"
 
 
+_model_cache: dict = {}
+
+
+def load_model(model_name: str, cpu_threads: int = 0):
+    """대기열로 여러 강의를 이어 받아쓸 때 매번 다시 불러오지 않게, 마지막에 쓴 모델 하나를 들고 있는다."""
+    # faster_whisper 는 불러오는 데 몇 초 걸려서, 창이 늦게 뜨지 않게 쓸 때 불러온다
+    from faster_whisper import WhisperModel
+
+    key = (model_name, cpu_threads)
+    if key not in _model_cache:
+        _model_cache.clear()  # 다른 모델로 바꾸면 앞의 것은 놓아 메모리를 아낀다
+        _model_cache[key] = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
+    return _model_cache[key]
+
+
 def transcribe(wav: Path, txt: Path, srt: Path, model_name: str, cpu_threads: int = 0,
                on_start=None, on_segment=None, should_stop=None) -> None:
     """on_start(전체 초) 는 받아쓰기 시작 때, on_segment(시작, 끝, 전체, 문장) 은 한 문장마다 불린다.
     cpu_threads 0 은 faster-whisper 기본값(4)."""
-    # faster_whisper 는 불러오는 데 몇 초 걸려서, 창이 늦게 뜨지 않게 쓸 때 불러온다
-    from faster_whisper import WhisperModel
-
-    model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
+    model = load_model(model_name, cpu_threads)
     segments, info = model.transcribe(load_wav(wav), language="ko", vad_filter=True)
 
     total = info.duration
